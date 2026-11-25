@@ -149,7 +149,7 @@ Open `photo.webp` to check the result. If the local Images binding gives you tro
 3. Test with your `*.workers.dev` URL:
 
    ```bash
-   curl -X POST "https://webp-converter-cloudflare-worker.<your-subdomain>.workers.dev/convert?quality=80" \
+   curl -X POST "https://webp-converter-cloudflare-worker.cheasocheat-km.workers.dev/convert?quality=80" \
      -H "Content-Type: image/png" \
      -H "x-api-key: YOUR_PRODUCTION_KEY" \
      --data-binary @image.png \

@@ -17,57 +17,147 @@
 // 	},
 // } satisfies ExportedHandler<Env>;
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"];
+const ALLOWED_ORIGINS = [
+	"http://localhost:3000",
+	"https://webpconverter-nextjs.cheasocheat-km.workers.dev",
+];
+
+const MAX_BYTES = 10 * 1024 * 1024;
+
+const ALLOWED_TYPES = [
+	"image/jpeg",
+	"image/png",
+	"image/gif",
+	"image/webp",
+	"image/avif",
+];
+
+function getCorsHeaders(origin: string): Headers {
+	return new Headers({
+		"Access-Control-Allow-Origin": origin,
+		"Access-Control-Allow-Methods": "POST, OPTIONS",
+		"Access-Control-Allow-Headers": "Content-Type, X-API-Key",
+		"Access-Control-Max-Age": "86400",
+		"Vary": "Origin",
+	});
+}
+
+function corsResponse(response: Response, cors: Headers): Response {
+	const headers = new Headers(response.headers);
+
+	cors.forEach((value, key) => headers.set(key, value));
+
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers,
+	});
+}
+
+function jsonError(
+	message: string,
+	status: number,
+	cors: Headers
+): Response {
+	return corsResponse(
+		Response.json({ error: message }, { status }),
+		cors
+	);
+}
 
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
+		const origin = request.headers.get("Origin");
+
+		// Handle preflight before API authentication.
+		if (request.method === "OPTIONS") {
+			if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
+				return new Response(null, { status: 403 });
+			}
+
+			return new Response(null, {
+				status: 204,
+				headers: getCorsHeaders(origin),
+			});
+		}
+
+		// Require an allowed browser origin.
+		if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
+			return new Response("Forbidden", { status: 403 });
+		}
+
+		const cors = getCorsHeaders(origin);
 		const url = new URL(request.url);
 
 		if (url.pathname !== "/convert") {
-			return Response.json({ error: "Not found" }, { status: 404 });
+			return jsonError("Not found", 404, cors);
 		}
+
 		if (request.method !== "POST") {
-			return Response.json({ error: "Use POST" }, { status: 405 });
+			return jsonError("Method not allowed", 405, cors);
 		}
 
-		// Validate content type
+		// Authenticate.
+		const apiKey = request.headers.get("X-API-Key");
+
+		if (!env.API_KEY || !apiKey || apiKey !== env.API_KEY) {
+			return jsonError("Unauthorized", 401, cors);
+		}
+
+		// Validate content type.
 		const contentType = request.headers.get("content-type") ?? "";
+
 		if (!ALLOWED_TYPES.includes(contentType)) {
-			return Response.json(
-				{ error: `Unsupported type. Allowed: ${ALLOWED_TYPES.join(", ")}` },
-				{ status: 415 }
-			);
+			return jsonError("Unsupported image type", 415, cors);
 		}
 
-		// Validate size
+		// Validate size.
 		const length = Number(request.headers.get("content-length") ?? 0);
+
 		if (length > MAX_BYTES) {
-			return Response.json({ error: "File too large (max 10 MB)" }, { status: 413 });
-		}
-		if (!request.body) {
-			return Response.json({ error: "Empty body" }, { status: 400 });
+			return jsonError("File too large (max 10 MB)", 413, cors);
 		}
 
-		// Optional query params: ?quality=80&width=800
-		const quality = clamp(Number(url.searchParams.get("quality") ?? 80), 1, 100);
+		if (!request.body) {
+			return jsonError("Empty body", 400, cors);
+		}
+
+		const quality = clamp(
+			Number(url.searchParams.get("quality") ?? 80),
+			1,
+			100
+		);
+
 		const width = Number(url.searchParams.get("width") ?? 0);
+
+		if (!Number.isFinite(width) || width < 0) {
+			return jsonError("Invalid width", 400, cors);
+		}
 
 		try {
 			let pipeline = env.IMAGES.input(request.body);
+
 			if (width > 0) {
-				pipeline = pipeline.transform({ width: Math.min(width, 4000) });
+				pipeline = pipeline.transform({
+					width: Math.min(Math.floor(width), 4000),
+				});
 			}
 
-			const result = await pipeline.output({ format: "image/webp", quality });
-			return result.response(); // WebP image with correct headers
+			const result = await pipeline.output({
+				format: "image/webp",
+				quality,
+			});
+
+			return corsResponse(result.response(), cors);
 		} catch (err) {
 			console.error("Conversion failed:", err);
-			return Response.json({ error: "Could not convert image" }, { status: 422 });
+			return jsonError("Could not convert image", 422, cors);
 		}
 	},
 } satisfies ExportedHandler<Env>;
 
 function clamp(n: number, min: number, max: number): number {
-	return Number.isFinite(n) ? Math.min(Math.max(n, min), max) : max;
+	return Number.isFinite(n)
+		? Math.min(Math.max(n, min), max)
+		: max;
 }
