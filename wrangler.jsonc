@@ -4,13 +4,16 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "webp-converter",
+	"name": "webp-converter-cloudflare-worker",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-11-23",
 	"observability": {
 		"enabled": true
 	},
-	"upload_source_maps": true
+	"upload_source_maps": true,
+	"images": {
+		"binding": "IMAGES"
+	}
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
