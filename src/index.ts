@@ -19,6 +19,7 @@
 
 const ALLOWED_ORIGINS = [
 	"http://localhost:3000",
+	"https://webpconverter.bytelabstech.com",
 	"https://webpconverter-nextjs.cheasocheat-km.workers.dev",
 ];
 
